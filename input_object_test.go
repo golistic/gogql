@@ -4,6 +4,7 @@ package gogql
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -43,6 +44,7 @@ type User {
 input UpdateUserInput {
   id: ID!
   name: String
+  givenName: String
   email: String
 }
 `
@@ -88,6 +90,7 @@ func TestGQLGenInputObjectFields(t *testing.T) {
 	var cases = map[string]struct {
 		query     string
 		exp       map[string][]string
+		expErr    error
 		args      []string
 		variables Variables
 	}{
@@ -108,27 +111,56 @@ func TestGQLGenInputObjectFields(t *testing.T) {
 				"input2": Variables{"foo": "bar"},
 			},
 		},
-		"non-input arguments": {
+		"input argument is object": {
 			query: `mutation { updateUser(input: {id: 123, name: "Marta"}, foo: 1234) { id } }`,
 			exp:   map[string][]string{"input": {"id", "name"}},
 			args:  []string{"input", "foo"},
 		},
-		"no input object arguments": {
+		"no input arguments": {
 			query: `mutation { updateUser(foo: 1234) { id } }`,
 			exp:   nil,
 			args:  []string{"input", "foo"},
 		},
 		"not a mutation": {
-			query: `query { user(id: 123) { id } }`,
-			exp:   nil,
+			query:  `query { user(id: 123) { id } }`,
+			exp:    nil,
+			expErr: fmt.Errorf("field context missing"),
+		},
+		"multiple mutations": {
+			query: `
+mutation ($inputA: UpdateUserInput!, $inputB: UpdateUserInput!) {
+	updateUser(input: $inputA) { id }
+	updateUser(input: $inputB) { id }
+}
+`,
+			exp: map[string][]string{"inputA": {"id", "name"}, "inputB": {"givenName", "id"}},
+			variables: Variables{
+				"inputA": Variables{"id": "123", "name": "Marta"},
+				"inputB": Variables{"id": "987", "givenName": "Tomas"},
+			},
+		},
+		"multiple mutations but no variables": {
+			query: `
+mutation {
+	updateUser(input: {id: "123", name: "Marta"}) { id }
+	updateUser(input: {id: "987", givenName: "Tomas"}) { id }
+}
+`,
+			exp: map[string][]string{"inputA": {"id", "name"}, "inputB": {"givenName", "id"}},
 		},
 	}
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
 			ctx = testContext(t, c.query, c.variables, ctx)
-			xt.Eq(t, c.exp, GQLGenInputObjectFields(ctx, c.args...))
-			fmt.Println(GQLGenInputObjectFields(ctx, c.args...))
+			have, err := GQLGenInputObjectFields(ctx, c.args...)
+
+			if c.expErr != nil {
+				xt.Eq(t, c.expErr, errors.Unwrap(err))
+			} else {
+				xt.OK(t, err)
+				xt.Eq(t, c.exp, have)
+			}
 		})
 	}
 

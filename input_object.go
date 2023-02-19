@@ -4,7 +4,8 @@ package gogql
 
 import (
 	"context"
-	"strings"
+	"fmt"
+	"sort"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/vektah/gqlparser/v2/ast"
@@ -18,47 +19,42 @@ import (
 // This also works when variables are used.
 // Nil is returned when no operation is in context, or when the operation is not
 // a mutation, or no arguments were available.
-func GQLGenInputObjectFields(ctx context.Context, arguments ...string) map[string][]string {
-	if graphql.GetOperationContext(ctx) == nil ||
-		graphql.GetOperationContext(ctx).Operation == nil {
-		return nil
+func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[string][]string, error) {
+	baseErr := "getting input type fields (%w)"
+	fieldCtx := graphql.GetFieldContext(ctx)
+	if fieldCtx == nil || fieldCtx.Field.Arguments == nil {
+		return nil, fmt.Errorf(baseErr, fmt.Errorf("field context missing"))
 	}
 
-	if graphql.GetOperationContext(ctx).Operation.Operation != ast.Mutation {
-		return nil
-	}
+	res := map[string][]string{}
+	fieldArgs := graphql.GetFieldContext(ctx).Field.Arguments
 
-	if len(arguments) == 0 {
-		arguments = []string{"input"}
-	}
-
-	if len(graphql.GetOperationContext(ctx).Operation.SelectionSet) == 0 {
-		return nil
-	}
-
-	fields := map[string][]string{}
-
-	sel := graphql.GetOperationContext(ctx).Operation.SelectionSet[0]
-	for _, argName := range arguments {
-		arg := sel.(*ast.Field).Arguments.ForName(argName)
-		if arg == nil {
-			continue
-		}
-
-		if strings.HasPrefix(arg.Value.String(), "$") {
-			for k := range graphql.GetOperationContext(ctx).Variables[arg.Value.Raw].(Variables) {
-				fields[argName] = append(fields[argName], k)
+	for _, argument := range arguments {
+		inputArgValue := fieldArgs.ForName(argument).Value
+		var fields []string
+		switch inputArgValue.Kind {
+		case ast.Variable:
+			operationCtx := graphql.GetOperationContext(ctx)
+			if operationCtx == nil {
+				return nil, fmt.Errorf(baseErr, fmt.Errorf("operation context missing"))
 			}
-		} else {
-			for _, c := range sel.(*ast.Field).Arguments.ForName(argName).Value.Children {
-				fields[argName] = append(fields[argName], c.Name)
+			varName := inputArgValue.String()[1:] // always prefixed with $
+			for k := range graphql.GetOperationContext(ctx).Variables[varName].(map[string]any) {
+				fields = append(fields, k)
+			}
+		case ast.ObjectValue:
+			for _, c := range inputArgValue.Children {
+				fields = append(fields, c.Name)
 			}
 		}
+
+		sort.Strings(fields)
+		res[argument] = fields
 	}
 
-	if len(fields) == 0 {
-		return nil
+	if len(res) == 0 {
+		return nil, nil
 	}
 
-	return fields
+	return res, nil
 }
