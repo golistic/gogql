@@ -1,6 +1,6 @@
 // Copyright (c) 2023, Geert JM Vanderkelen
 
-package gogql
+package gogql_test
 
 import (
 	"context"
@@ -12,6 +12,8 @@ import (
 	"github.com/golistic/xt"
 	"github.com/vektah/gqlparser/v2/ast"
 	"github.com/vektah/gqlparser/v2/parser"
+
+	"github.com/golistic/gogql"
 )
 
 //type TestUserModel struct {
@@ -49,12 +51,13 @@ input UpdateUserInput {
 }
 `
 
-func testContext(t *testing.T, query string, vars Variables, ctx context.Context) context.Context {
+func testContext(t *testing.T, query string, vars gogql.Variables, args []string, ctx context.Context) context.Context {
 	srcMutation := &ast.Source{
 		Name:    "test",
 		Input:   query,
 		BuiltIn: false,
 	}
+
 	doc, err := parser.ParseQuery(srcMutation)
 	xt.OK(t, err)
 	_ = doc
@@ -73,8 +76,29 @@ func testContext(t *testing.T, query string, vars Variables, ctx context.Context
 		},
 		Operation: doc.Operations[0],
 	}
+
+	fldCtx := &graphql.FieldContext{
+		Parent: nil,
+		Object: "",
+		Args:   nil,
+		Field: graphql.CollectedField{
+			Field: &ast.Field{
+				SelectionSet: doc.Operations[0].SelectionSet[0].(*ast.Field).SelectionSet,
+			},
+		},
+		Index:      nil,
+		Result:     nil,
+		IsMethod:   false,
+		IsResolver: false,
+		Child:      nil,
+	}
+
 	xt.OK(t, rqCtx.Validate(ctx))
-	return graphql.WithOperationContext(ctx, rqCtx)
+
+	ctx = graphql.WithOperationContext(ctx, rqCtx)
+	ctx = graphql.WithFieldContext(ctx, fldCtx)
+
+	return ctx
 }
 
 func TestGQLGenInputObjectFields(t *testing.T) {
@@ -92,7 +116,7 @@ func TestGQLGenInputObjectFields(t *testing.T) {
 		exp       map[string][]string
 		expErr    error
 		args      []string
-		variables Variables
+		variables gogql.Variables
 	}{
 		"with operation name": {
 			query: `mutation UpdateUser { updateUser(input: {id: 123, name: "Marta"}) { id } }`,
@@ -103,12 +127,17 @@ func TestGQLGenInputObjectFields(t *testing.T) {
 			exp:   map[string][]string{"input": {"id", "name"}, "input2": {"foo"}},
 			args:  []string{"input", "input2"},
 		},
+		"argument missing from field arguments": {
+			query: `mutation { updateUser(input: {id: 123, name: "Marta"}) { id } }`,
+			exp:   map[string][]string{"input": {"id", "name"}},
+			args:  []string{"input", "input2"},
+		},
 		"using variables": {
 			query: `mutation ($input2: UpdateUserInput!) { updateUser(input: {id: 123, name: "Marta"}, input2: $input2) { id } }`,
 			exp:   map[string][]string{"input": {"id", "name"}, "input2": {"foo"}},
 			args:  []string{"input", "input2"},
-			variables: Variables{
-				"input2": Variables{"foo": "bar"},
+			variables: gogql.Variables{
+				"input2": gogql.Variables{"foo": "bar"},
 			},
 		},
 		"input argument is object": {
@@ -134,9 +163,9 @@ mutation ($inputA: UpdateUserInput!, $inputB: UpdateUserInput!) {
 }
 `,
 			exp: map[string][]string{"inputA": {"id", "name"}, "inputB": {"givenName", "id"}},
-			variables: Variables{
-				"inputA": Variables{"id": "123", "name": "Marta"},
-				"inputB": Variables{"id": "987", "givenName": "Tomas"},
+			variables: gogql.Variables{
+				"inputA": gogql.Variables{"id": "123", "name": "Marta"},
+				"inputB": gogql.Variables{"id": "987", "givenName": "Tomas"},
 			},
 		},
 		"multiple mutations but no variables": {
@@ -152,8 +181,9 @@ mutation {
 	for name, c := range cases {
 		t.Run(name, func(t *testing.T) {
 			ctx := context.Background()
-			ctx = testContext(t, c.query, c.variables, ctx)
-			have, err := GQLGenInputObjectFields(ctx, c.args...)
+			ctx = testContext(t, c.query, c.variables, c.args, ctx)
+			fmt.Println("### args", c.args)
+			have, err := gogql.GQLGenInputObjectFields(ctx, c.args...)
 
 			if c.expErr != nil {
 				xt.Eq(t, c.expErr, errors.Unwrap(err))

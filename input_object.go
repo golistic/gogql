@@ -30,7 +30,11 @@ func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[stri
 	fieldArgs := graphql.GetFieldContext(ctx).Field.Arguments
 
 	for _, argument := range arguments {
-		inputArgValue := fieldArgs.ForName(argument).Value
+		fa := fieldArgs.ForName(argument)
+		if fa == nil {
+			continue
+		}
+		inputArgValue := fa.Value
 		var fields []string
 		switch inputArgValue.Kind {
 		case ast.Variable:
