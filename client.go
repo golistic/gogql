@@ -25,9 +25,10 @@ type Result struct {
 // HTTP.
 type Client struct {
 	ContentType string
+	HttpClient  *http.Client
 
 	apiEndpoint string
-	httpClient  *http.Client
+	headers     map[string]string
 }
 
 // Payload defines what we send to the GraphQL endpoint.
@@ -41,20 +42,28 @@ func NewClient(apiEndpoint string) *Client {
 	return &Client{
 		ContentType: "application/json",
 		apiEndpoint: apiEndpoint,
-		httpClient:  http.DefaultClient,
+		HttpClient:  http.DefaultClient,
 	}
 }
 
 // Execute executes the GraphQL query.
-func (c Client) Execute(query string, result any) []error {
+func (c *Client) Execute(query string, result any) []error {
 	return c.execute(query, result, nil)
 }
 
-func (c Client) ExecuteWithVars(query string, result interface{}, vars Variables) []error {
+func (c *Client) ExecuteWithVars(query string, result interface{}, vars Variables) []error {
 	return c.execute(query, result, vars)
 }
 
-func (c Client) execute(query string, result interface{}, vars Variables) []error {
+func (c *Client) SetHeader(key, value string) {
+	if c.headers == nil {
+		c.headers = map[string]string{}
+	}
+
+	c.headers[key] = value
+}
+
+func (c *Client) execute(query string, result interface{}, vars Variables) []error {
 	payload := &Payload{
 		Query:     query,
 		Variables: vars,
@@ -62,10 +71,23 @@ func (c Client) execute(query string, result interface{}, vars Variables) []erro
 
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return []error{err}
+		return []error{fmt.Errorf("encoding request (%w)", err)}
 	}
 
-	resp, err := c.httpClient.Post(c.apiEndpoint, c.ContentType, bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, c.apiEndpoint, bytes.NewReader(body))
+	if err != nil {
+		return []error{fmt.Errorf("creating HTTP request (%w)", err)}
+	}
+
+	for k, v := range c.headers {
+		req.Header.Set(k, v)
+	}
+
+	if c.ContentType != "" {
+		req.Header.Set("Content-Type", c.ContentType)
+	}
+
+	resp, err := c.HttpClient.Do(req)
 	if err != nil {
 		return []error{fmt.Errorf("gogql: sending request (%w)", err)}
 	}
