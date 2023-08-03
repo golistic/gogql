@@ -20,6 +20,7 @@ import (
 // Nil is returned when no operation is in context, or when the operation is not
 // a mutation, or no arguments were available.
 func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[string][]string, error) {
+
 	baseErr := "getting input type fields (%w)"
 	fieldCtx := graphql.GetFieldContext(ctx)
 	if fieldCtx == nil || fieldCtx.Field.Arguments == nil {
@@ -34,8 +35,10 @@ func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[stri
 		if fa == nil {
 			continue
 		}
+
 		inputArgValue := fa.Value
 		var fields []string
+
 		switch inputArgValue.Kind {
 		case ast.Variable:
 			operationCtx := graphql.GetOperationContext(ctx)
@@ -43,7 +46,13 @@ func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[stri
 				return nil, fmt.Errorf(baseErr, fmt.Errorf("operation context missing"))
 			}
 			varName := inputArgValue.String()[1:] // always prefixed with $
-			for k := range graphql.GetOperationContext(ctx).Variables[varName].(map[string]any) {
+
+			vars, ok := graphql.GetOperationContext(ctx).Variables[varName].(map[string]any)
+			if !ok {
+				return nil, fmt.Errorf(baseErr, fmt.Errorf("variable missing for %s", varName))
+			}
+
+			for k := range vars {
 				fields = append(fields, k)
 			}
 		case ast.ObjectValue:
