@@ -49,7 +49,7 @@ func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[stri
 
 			vars, ok := graphql.GetOperationContext(ctx).Variables[varName].(map[string]any)
 			if !ok {
-				return nil, fmt.Errorf(baseErr, fmt.Errorf("variable missing for %s", varName))
+				break
 			}
 
 			for k := range vars {
