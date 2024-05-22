@@ -59,10 +59,13 @@ func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[stri
 			for _, c := range inputArgValue.Children {
 				fields = append(fields, c.Name)
 			}
+		default:
 		}
 
-		sort.Strings(fields)
-		res[argument] = fields
+		if len(fields) > 0 {
+			sort.Strings(fields)
+			res[argument] = fields
+		}
 	}
 
 	if len(res) == 0 {
