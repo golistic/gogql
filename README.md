@@ -1,7 +1,7 @@
 gogql - Go GraphQL things
 =========================
 
-Copyright (c) 2020, 2023, Geert JM Vanderkelen
+Copyright (c) 2020, 2024, Geert JM Vanderkelen
 
 The `gogql` package contains various tooling around GraphQL.
 
