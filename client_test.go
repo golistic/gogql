@@ -12,8 +12,8 @@ import (
 	"sort"
 	"testing"
 
-	"github.com/golistic/xt"
-	"github.com/vektah/gqlparser/gqlerror"
+	"github.com/golistic/xgo/xt"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
 
 // MustMD5SumIt returns the hexadecimal string representation of the MD5sum of s.

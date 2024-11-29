@@ -9,12 +9,8 @@ import (
 	"io"
 	"net/http"
 
-	"github.com/vektah/gqlparser/gqlerror"
+	"github.com/vektah/gqlparser/v2/gqlerror"
 )
-
-// Variables defines a key/value mapping which can be used to pass
-// variables when executing GraphQL queries.
-type Variables map[string]any
 
 type Result struct {
 	Data   json.RawMessage  `json:"data,omitempty"`
@@ -33,8 +29,8 @@ type Client struct {
 
 // Payload defines what we send to the GraphQL endpoint.
 type Payload struct {
-	Query     string    `json:"query"`
-	Variables Variables `json:"variables,omitempty"`
+	Query     string         `json:"query"`
+	Variables map[string]any `json:"variables,omitempty"`
 }
 
 // NewClient returns a new GraphQL Client connecting to the apiEndpoint.
@@ -51,7 +47,7 @@ func (c *Client) Execute(query string, result any) []error {
 	return c.execute(query, result, nil)
 }
 
-func (c *Client) ExecuteWithVars(query string, result interface{}, vars Variables) []error {
+func (c *Client) ExecuteWithVars(query string, result interface{}, vars map[string]any) []error {
 	return c.execute(query, result, vars)
 }
 
@@ -63,7 +59,7 @@ func (c *Client) SetHeader(key, value string) {
 	c.headers[key] = value
 }
 
-func (c *Client) execute(query string, result interface{}, vars Variables) []error {
+func (c *Client) execute(query string, result interface{}, vars map[string]any) []error {
 	payload := &Payload{
 		Query:     query,
 		Variables: vars,

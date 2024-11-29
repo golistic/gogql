@@ -5,7 +5,7 @@ package gogql
 import (
 	"context"
 	"fmt"
-	"sort"
+	"slices"
 
 	"github.com/99designs/gqlgen/graphql"
 	"github.com/vektah/gqlparser/v2/ast"
@@ -13,64 +13,87 @@ import (
 
 // GQLGenInputObjectFields retrieves the fields of the Input Object types used as arguments
 // when executing mutations.
+//
+// Deprecated: use ProvidedFieldsForCurrentMutation instead.
+func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[string][]string, error) {
+	return ProvidedFieldsForCurrentMutation(ctx, arguments...)
+}
+
+// ProvidedFieldsForCurrentMutation retrieves the fields of the Input Object types used as arguments
+// within a gqlgen generated resolver.
+//
 // For example, `mutation { updateUser(input: {id: 123, name: "Marta"}) { id }` would return
 // the fields "id" and "name" returning a map with key 'input', and slice of strings.
 // If no arguments are specified, 'input' will be returned (if available).
 // This also works when variables are used.
-// Nil is returned when no operation is in context, or when the operation is not
-// a mutation, or no arguments were available.
-func GQLGenInputObjectFields(ctx context.Context, arguments ...string) (map[string][]string, error) {
+//
+// This function is intended to be used in gqlgen generated resolvers handling mutations.
+func ProvidedFieldsForCurrentMutation(ctx context.Context, filterArguments ...string) (map[string][]string, error) {
 
-	baseErr := "getting input type fields (%w)"
-	fieldCtx := graphql.GetFieldContext(ctx)
-	if fieldCtx == nil || fieldCtx.Field.Arguments == nil {
-		return nil, fmt.Errorf(baseErr, fmt.Errorf("field context missing"))
+	opCtx := graphql.GetOperationContext(ctx)
+	if opCtx == nil {
+		return nil, fmt.Errorf("no operation in context")
 	}
 
-	res := map[string][]string{}
-	fieldArgs := graphql.GetFieldContext(ctx).Field.Arguments
+	if opCtx.Operation.Operation != ast.Mutation {
+		return nil, fmt.Errorf("not a mutation")
+	}
 
-	for _, argument := range arguments {
-		fa := fieldArgs.ForName(argument)
-		if fa == nil {
+	fieldCtx := graphql.GetFieldContext(ctx)
+	if fieldCtx == nil {
+		return nil, fmt.Errorf("no field in context")
+	}
+
+	providedFields := make(map[string][]string)
+	currentFieldName := fieldCtx.Field.Name
+
+	for _, selection := range opCtx.Operation.SelectionSet {
+
+		field, ok := selection.(*ast.Field)
+		if !ok || field.Name != currentFieldName {
 			continue
 		}
 
-		inputArgValue := fa.Value
-		var fields []string
-
-		switch inputArgValue.Kind {
-		case ast.Variable:
-			operationCtx := graphql.GetOperationContext(ctx)
-			if operationCtx == nil {
-				return nil, fmt.Errorf(baseErr, fmt.Errorf("operation context missing"))
-			}
-			varName := inputArgValue.String()[1:] // always prefixed with $
-
-			vars, ok := graphql.GetOperationContext(ctx).Variables[varName].(map[string]any)
-			if !ok {
-				break
+		for _, arg := range field.Arguments {
+			if len(filterArguments) > 0 && !slices.Contains(filterArguments, arg.Name) {
+				continue
 			}
 
-			for k := range vars {
-				fields = append(fields, k)
-			}
-		case ast.ObjectValue:
-			for _, c := range inputArgValue.Children {
-				fields = append(fields, c.Name)
-			}
-		default:
-		}
+			var fieldNames []string
 
-		if len(fields) > 0 {
-			sort.Strings(fields)
-			res[argument] = fields
+			switch arg.Value.Kind {
+			case ast.Variable:
+				variableName := arg.Value.Raw
+				if variable, ok := opCtx.Variables[variableName]; ok {
+					fieldNames = extractFieldNamesFromVariable(variable)
+				} else {
+					return nil, fmt.Errorf("variable %s not found in operation variables", variableName)
+				}
+			case ast.ObjectValue:
+				for _, child := range arg.Value.Children {
+					fieldNames = append(fieldNames, child.Name)
+				}
+			default:
+				return nil, fmt.Errorf("unsupported argument value kind: %s", arg.Value.String())
+			}
+
+			providedFields[arg.Name] = fieldNames
 		}
 	}
 
-	if len(res) == 0 {
-		return nil, nil
+	return providedFields, nil
+}
+
+// extractFieldNamesFromVariable extracts the field names from a variable object.
+func extractFieldNamesFromVariable(variable any) []string {
+
+	var fieldNames []string
+
+	if obj, ok := variable.(map[string]any); ok {
+		for key := range obj {
+			fieldNames = append(fieldNames, key)
+		}
 	}
 
-	return res, nil
+	return fieldNames
 }
