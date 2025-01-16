@@ -1,13 +1,13 @@
 module github.com/golistic/gogql
 
-go 1.22.5
+go 1.23.0
 
-toolchain go1.22.9
+toolchain go1.23.4
 
 require (
-	github.com/99designs/gqlgen v0.17.57
-	github.com/golistic/xgo v1.13.0
-	github.com/vektah/gqlparser/v2 v2.5.20
+	github.com/99designs/gqlgen v0.17.63
+	github.com/golistic/xgo v1.15.3
+	github.com/vektah/gqlparser/v2 v2.5.21
 )
 
 require (
